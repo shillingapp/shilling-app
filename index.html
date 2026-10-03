@@ -706,6 +706,7 @@ function fbLaunchApp(){window._fbUser=_fbUser;
 
   fbHideAuth();fbHideBizSetup();
   if(_fbUser)window._fbActorUid=_fbUser.uid;
+  syncServerTime().catch(()=>{});
   const app=document.querySelector('.app');if(app)app.style.display='';
   // Check if previously in Firestore primary mode
   let shouldRestorePrimary=false;
@@ -985,8 +986,27 @@ const MONS={so:['Jan','Feb','Mar','Abr','May','Jun','Luu','Ago','Seb','Okt','Nof
 const MONFS={so:['Janaayo','Febraayo','Maarso','Abriil','May','Juun','Luuliyo','Agoosto','Sebtembar','Oktoobar','Nofembar','Diseembar'],en:['January','February','March','April','May','June','July','August','September','October','November','December']};
 const pad=n=>String(n).padStart(2,'0');
 const fmtD=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
-const today=()=>fmtD(new Date());
-const addDays=n=>fmtD(new Date(Date.now()+n*864e5));
+// Server-synced time — all devices use same date
+let _serverTimeOffset=0; // ms offset between local and server
+async function syncServerTime(){
+  try{
+    if(_fbDb){
+      const t0=Date.now();
+      const ref=await _fbDb.collection('_serverTime').doc('ping')
+        .set({t:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      // Use Firestore timestamp from a read
+      const snap=await _fbDb.collection('_serverTime').doc('ping').get();
+      if(snap.exists&&snap.data().t){
+        const serverMs=snap.data().t.toMillis();
+        const localMs=Date.now();
+        _serverTimeOffset=serverMs-localMs;
+      }
+    }
+  }catch(e){_serverTimeOffset=0;}
+}
+const serverNow=()=>new Date(Date.now()+_serverTimeOffset);
+const today=()=>fmtD(serverNow());
+const addDays=n=>fmtD(new Date(Date.now()+_serverTimeOffset+n*864e5));
 const ym=s=>s.slice(0,7);
 const fdate=s=>s.split('-').reverse().join('/');
 const monthLabel=k=>MONFS[LANG][+k.slice(5,7)-1]+' '+k.slice(0,4);
